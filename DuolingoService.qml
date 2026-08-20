@@ -23,9 +23,7 @@ Item {
   property string courseId: ""
 
   readonly property string home: Quickshell.env("HOME") || ""
-  readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || (home + "/.config")
   readonly property string cacheHome: Quickshell.env("XDG_CACHE_HOME") || (home + "/.cache")
-  readonly property string configPath: configHome + "/omarchy/duolingo.json"
   readonly property string cachePath: cacheHome + "/omarchy-duolingo/stats.json"
   readonly property string pluginDir: decodeURIComponent(
     Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
@@ -55,6 +53,19 @@ Item {
   onCourseIdChanged: service.queueRefresh(true)
 
   function refresh(force) {
+    if (!service.username) {
+      loading = false
+      snapshot = {
+        ok: false,
+        configured: false,
+        stale: false,
+        error: "Add your Duolingo username in settings.",
+        errorCode: "not_configured"
+      }
+      updated()
+      return
+    }
+
     if (poll.running) {
       refreshQueued = true
       queuedForce = queuedForce || force === true
@@ -64,24 +75,12 @@ Item {
     var command = [
       "node",
       service.scriptPath,
-    ]
-
-    if (service.username) {
-      command.push(
-        "--username", service.username,
-        "--language", service.language,
-        "--course-id", service.courseId
-      )
-    } else {
-      command.push(
-        "--config", service.configPath
-      )
-    }
-
-    command.push(
+      "--username", service.username,
+      "--language", service.language,
+      "--course-id", service.courseId,
       "--cache", service.cachePath,
       "--max-age", "60"
-    )
+    ]
 
     if (force === true) command.push("--force")
     receivedOutput = false
@@ -131,16 +130,7 @@ Item {
     Qt.callLater(function() { service.refresh(force) })
   }
 
-  FileView {
-    id: configFile
-    path: service.configPath
-    watchChanges: true
-    printErrors: false
-    preload: true
-    onFileChanged: reload()
-    onLoaded: service.queueRefresh(true)
-    onLoadFailed: service.queueRefresh(true)
-  }
+  Component.onCompleted: service.queueRefresh(true)
 
   Process {
     id: poll

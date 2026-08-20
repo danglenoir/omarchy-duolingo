@@ -288,45 +288,10 @@ function normalizeStats(profile, leaderboard, config, today = null, warnings = n
   };
 }
 
-function defaultConfigPath() {
-  const home = os.homedir();
-  const configHome = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
-  return path.join(configHome, "omarchy", "duolingo.json");
-}
-
 function defaultCachePath() {
   const home = os.homedir();
   const cacheHome = process.env.XDG_CACHE_HOME || path.join(home, ".cache");
   return path.join(cacheHome, "omarchy-duolingo", "stats.json");
-}
-
-function loadConfig(configPath) {
-  let raw;
-  try {
-    raw = fs.readFileSync(configPath, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") {
-      throw new WidgetError("not_configured", `Create ${configPath} to configure Duolingo.`);
-    }
-    throw new WidgetError("config_unreadable", `Could not read ${configPath}.`);
-  }
-
-  let config;
-  try {
-    config = JSON.parse(raw);
-  } catch (err) {
-    throw new WidgetError("invalid_config", `${configPath} is not valid JSON.`);
-  }
-
-  if (typeof config !== "object" || config === null) {
-    throw new WidgetError("invalid_config", `${configPath} must contain a JSON object.`);
-  }
-
-  if (!firstText(config.username)) {
-    throw new WidgetError("invalid_config", `Add your Duolingo username to ${configPath}.`);
-  }
-
-  return config;
 }
 
 function configIdentity(config) {
@@ -471,25 +436,15 @@ function releaseLock(lockPath) {
 }
 
 async function run(args) {
-  let config;
-  if (args.username) {
-    config = {
-      username: args.username,
-      language: args.language || "",
-      courseId: args['course-id'] || ""
-    };
-  } else {
-    const configPath = expandUser(args.config || defaultConfigPath());
-    try {
-      config = loadConfig(configPath);
-    } catch (exc) {
-      return errorPayload(exc, false);
-    }
-  }
-
-  if (!firstText(config.username)) {
+  if (!args.username) {
     return errorPayload(new WidgetError("not_configured", "Add your Duolingo username in settings."), false);
   }
+
+  const config = {
+    username: args.username,
+    language: args.language || "",
+    courseId: args['course-id'] || ""
+  };
 
   const identity = configIdentity(config);
   const cachePath = expandUser(args.cache || defaultCachePath());
@@ -534,7 +489,6 @@ async function run(args) {
 
 async function main() {
   const options = {
-    config: { type: 'string' },
     cache: { type: 'string' },
     'max-age': { type: 'string' },
     timeout: { type: 'string' },
@@ -580,7 +534,6 @@ module.exports = {
   normalizeLeaderboard,
   normalizeStats,
   configIdentity,
-  loadConfig,
   loadCache,
   saveCache,
   fetchStats,
