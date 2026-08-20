@@ -304,6 +304,8 @@ Panel {
 
             trailingControl: Component {
               Row {
+                width: implicitWidth
+                height: implicitHeight
                 spacing: Style.space(6)
 
                 PanelActionButton {
