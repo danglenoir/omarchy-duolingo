@@ -310,7 +310,6 @@ Panel {
                   iconText: "󰑐"
                   tooltipText: "Refresh Duolingo stats"
                   foreground: root.foreground
-                  fontFamily: root.fontFamily
                   enabled: !stats.loading && !root.showingSettings
                   focusable: true
                   onClicked: root.refresh(true)
@@ -320,7 +319,6 @@ Panel {
                   iconText: root.showingSettings ? "󰁍" : "󰒓"
                   tooltipText: root.showingSettings ? "Back to stats" : "Settings"
                   foreground: root.foreground
-                  fontFamily: root.fontFamily
                   focusable: true
                   onClicked: {
                     if (root.showingSettings) root.closeSettings()
@@ -371,6 +369,16 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               wrapMode: Text.WordWrap
+            }
+
+            Button {
+              visible: !stats.loading && (root.snapshot.errorCode === "not_configured" || root.snapshot.errorCode === "invalid_config")
+              text: "Configure Settings"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              focusable: true
+              bordered: true
+              onClicked: root.openSettings()
             }
           }
 
@@ -606,7 +614,6 @@ Panel {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Cancel"
                 foreground: root.foreground
-                fontFamily: root.fontFamily
                 focusable: true
                 onClicked: root.closeSettings()
               }
@@ -619,7 +626,6 @@ Panel {
                 iconText: "󰆓"
                 text: "Save"
                 foreground: root.foreground
-                fontFamily: root.fontFamily
                 focusable: true
                 onClicked: root.saveSettings()
               }
