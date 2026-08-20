@@ -88,6 +88,45 @@ test('NormalizeTests - yesterdays end date marks an existing streak at risk', ()
   assert.strictEqual(result.leaderboard.league, "Ruby");
 });
 
+test('DisplayText - strips tags and leftover markup delimiters', () => {
+  assert.strictEqual(api.displayText('<img src="https://evil.example/x">Ada'), "Ada");
+  assert.strictEqual(api.displayText('<b>ada</b>'), "ada");
+  assert.strictEqual(api.displayText('<img src="https://evil.example/x"'), 'img src="https://evil.example/x"');
+  assert.strictEqual(api.displayText("Ada Learner"), "Ada Learner");
+  assert.strictEqual(api.displayText("Ada\u0000Learner"), "AdaLearner");
+  assert.strictEqual(api.displayText("A".repeat(250)).length, 200);
+});
+
+test('AllowedUrl - only Duolingo HTTPS hosts are accepted', () => {
+  assert.strictEqual(api.isAllowedUrl("https://www.duolingo.com/2017-06-30/users?username=ada"), true);
+  assert.strictEqual(api.isAllowedUrl("https://duolingo-leaderboards-prod.duolingo.com/leaderboards/x/users/1"), true);
+  assert.strictEqual(api.isAllowedUrl("http://www.duolingo.com/2017-06-30/users?username=ada"), false);
+  assert.strictEqual(api.isAllowedUrl("https://evil.example/x"), false);
+  assert.strictEqual(api.isAllowedUrl("https://www.duolingo.com.evil.example/x"), false);
+  assert.strictEqual(api.isAllowedUrl("not a url"), false);
+});
+
+test('NormalizeTests - profile markup is stripped from display strings', () => {
+  const profile = publicProfile();
+  profile.name = '<img src="https://evil.example/x">Ada';
+  profile.username = '<b>ada</b>';
+  profile.courses[1].title = 'Spanish<img src="https://evil.example/y">';
+
+  const result = api.normalizeStats(
+    profile,
+    activeLeaderboard(),
+    { username: "ada", language: "es" },
+    new Date("2026-08-20T12:00:00Z")
+  );
+
+  assert.strictEqual(result.profile.name, "Ada");
+  assert.strictEqual(result.profile.username, "ada");
+  assert.strictEqual(result.course.title, "Spanish");
+  assert.ok(!result.profile.name.includes("<"));
+  assert.ok(!result.profile.username.includes("<"));
+  assert.ok(!result.course.title.includes("<"));
+});
+
 test('NormalizeTests - zero streak is not presented as at risk', () => {
   const profile = publicProfile("");
   profile.streak = 0;
@@ -144,6 +183,13 @@ test('FetchTests - leaderboard failure is handled as a warning', async () => {
   assert.strictEqual(result.leaderboard.league, "Unranked");
 });
 
+test('FetchTests - oversized username is rejected', async () => {
+  await assert.rejects(
+    api.fetchStats({ username: "a".repeat(65) }, async () => ({})),
+    /username is invalid/
+  );
+});
+
 test('FetchTests - user not found or private profile', async () => {
   const fakeGetJson = async (url) => {
     return { users: [] };
@@ -184,6 +230,37 @@ test('CacheTests - cache is scoped to username and course', () => {
 
     assert.deepStrictEqual(api.loadCache(cachePath, "ada||es", 60), data);
     assert.strictEqual(api.loadCache(cachePath, "grace||es", 60), null);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('CacheTests - cached profile markup is stripped on load', () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "duolingo-tests-"));
+  try {
+    const cachePath = path.join(tempDir, "stats.json");
+    fs.mkdirSync(tempDir, { recursive: true });
+    fs.writeFileSync(cachePath, JSON.stringify({
+      identity: "ada||",
+      savedAt: Date.now() / 1000,
+      data: {
+        ok: true,
+        profile: {
+          name: '<img src="https://evil.example/x">Ada',
+          username: '<b>ada</b>',
+        },
+        course: { title: 'Spanish<img src="https://evil.example/y">' },
+        leaderboard: { league: '<i>Diamond</i>' },
+        error: '<script>alert(1)</script>stale',
+      },
+    }));
+
+    const loaded = api.loadCache(cachePath, "ada||", 60);
+    assert.strictEqual(loaded.profile.name, "Ada");
+    assert.strictEqual(loaded.profile.username, "ada");
+    assert.strictEqual(loaded.course.title, "Spanish");
+    assert.strictEqual(loaded.leaderboard.league, "Diamond");
+    assert.strictEqual(loaded.error, "alert(1)stale");
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

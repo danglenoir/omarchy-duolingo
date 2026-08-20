@@ -19,6 +19,7 @@ Item {
     anchors.top: parent.top
     height: Style.space(25)
     text: root.value
+    textFormat: Text.PlainText
     color: root.valueColor
     font.family: root.fontFamily
     font.pixelSize: Style.font.title
@@ -34,6 +35,7 @@ Item {
     anchors.right: parent.right
     anchors.top: valueText.bottom
     text: root.label
+    textFormat: Text.PlainText
     color: Qt.darker(root.foreground, 1.45)
     font.family: root.fontFamily
     font.pixelSize: Style.font.caption

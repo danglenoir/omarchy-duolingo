@@ -25,7 +25,7 @@ Panel {
   readonly property bool todayDone: streak.todayDone === true
   readonly property bool atRisk: streak.atRisk === true
   readonly property string languageName: dataReady && snapshot.course && snapshot.course.title
-    ? String(snapshot.course.title)
+    ? remoteText(snapshot.course.title)
     : "your course"
 
   property bool showingSettings: false
@@ -94,6 +94,16 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
+  function remoteText(value) {
+    var text = String(value == null ? "" : value)
+    text = text.replace(/<[^>]*>/g, "").replace(/[<>]/g, "")
+    text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    text = text.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+    if (text.length > 200)
+      text = text.substring(0, 200)
+    return text
+  }
+
   function formatNumber(value) {
     if (value === undefined || value === null || value === "") return "-"
     var number = Number(value)
@@ -116,7 +126,7 @@ Panel {
     if (!dataReady) {
       if (stats.loading) return "Loading your Duolingo streak..."
       return snapshot.error
-        ? String(snapshot.error)
+        ? remoteText(snapshot.error)
         : "Configure your Duolingo profile to show your streak."
     }
     if (atRisk) {
@@ -211,6 +221,7 @@ Panel {
       Text {
         anchors.verticalCenter: parent.verticalCenter
         text: button.text
+        textFormat: Text.PlainText
         color: button.active && button.useActiveColor ? button.activeColor : button.foreground
         font.family: button.fontFamily
         font.pixelSize: Style.font.body
@@ -237,6 +248,7 @@ Panel {
           (root.bar ? root.bar.barSize : Style.bar.sizeVertical) - Style.space(6))
         anchors.horizontalCenter: parent.horizontalCenter
         text: button.text
+        textFormat: Text.PlainText
         color: button.active && button.useActiveColor ? button.activeColor : button.foreground
         font.family: button.fontFamily
         font.pixelSize: Style.font.caption
@@ -344,6 +356,7 @@ Panel {
             Text {
               width: parent.width
               text: stats.loading ? "Loading your Duolingo profile..." : "Duolingo data is unavailable"
+              textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
@@ -354,7 +367,8 @@ Panel {
             Text {
               width: parent.width
               visible: !stats.loading
-              text: root.snapshot.error || "Check your Duolingo configuration."
+              text: remoteText(root.snapshot.error) || "Check your Duolingo configuration."
+              textFormat: Text.PlainText
               color: root.snapshot.errorCode === "not_configured"
                 ? Qt.darker(root.foreground, 1.35)
                 : root.urgent
@@ -367,6 +381,7 @@ Panel {
               width: parent.width
               visible: !stats.loading && root.snapshot.errorCode === "not_configured"
               text: "Click the gear icon (󰒓) in the top-right to configure."
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -403,7 +418,8 @@ Panel {
 
                 Text {
                   width: parent.width
-                  text: root.snapshot.profile ? root.snapshot.profile.name : ""
+                  text: root.snapshot.profile ? remoteText(root.snapshot.profile.name) : ""
+                  textFormat: Text.PlainText
                   color: root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.title
@@ -413,7 +429,8 @@ Panel {
 
                 Text {
                   width: parent.width
-                  text: root.snapshot.profile ? "@" + root.snapshot.profile.username : ""
+                  text: root.snapshot.profile ? "@" + remoteText(root.snapshot.profile.username) : ""
+                  textFormat: Text.PlainText
                   color: Qt.darker(root.foreground, 1.45)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.bodySmall
@@ -431,6 +448,7 @@ Panel {
                 Text {
                   width: parent.width
                   text: root.formatNumber(root.streakDays) + (root.atRisk ? "!" : "")
+                  textFormat: Text.PlainText
                   color: root.atRisk ? root.urgent : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.display
@@ -443,6 +461,7 @@ Panel {
                 Text {
                   width: parent.width
                   text: root.dayWord(root.streakDays) + " in your streak"
+                  textFormat: Text.PlainText
                   color: root.atRisk ? root.urgent : Qt.darker(root.foreground, 1.45)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -474,6 +493,7 @@ Panel {
                 Text {
                   anchors.verticalCenter: parent.verticalCenter
                   text: root.todayDone ? "✓" : (root.atRisk ? "!" : "-")
+                  textFormat: Text.PlainText
                   color: root.todayDone ? root.accent : (root.atRisk ? root.urgent : root.foreground)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.title
@@ -484,6 +504,7 @@ Panel {
                   width: Math.max(0, parent.width - parent.children[0].implicitWidth - parent.spacing)
                   anchors.verticalCenter: parent.verticalCenter
                   text: root.statusText()
+                  textFormat: Text.PlainText
                   color: root.atRisk ? root.urgent : root.foreground
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
@@ -527,7 +548,7 @@ Panel {
                 width: metrics.cellWidth
                 label: "League"
                 value: root.snapshot.leaderboard
-                  ? root.snapshot.leaderboard.league
+                  ? remoteText(root.snapshot.leaderboard.league)
                   : "Unranked"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
@@ -538,7 +559,8 @@ Panel {
               width: parent.width
               visible: root.snapshot.stale === true
               text: "Showing cached data. "
-                + (root.snapshot.error || "Duolingo is temporarily unavailable.")
+                + (remoteText(root.snapshot.error) || "Duolingo is temporarily unavailable.")
+              textFormat: Text.PlainText
               color: root.urgent
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
@@ -549,6 +571,7 @@ Panel {
               width: parent.width
               visible: root.updatedLabel() !== ""
               text: root.updatedLabel()
+              textFormat: Text.PlainText
               color: Qt.darker(root.foreground, 1.55)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

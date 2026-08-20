@@ -89,6 +89,40 @@ Item {
     poll.running = true
   }
 
+  function sanitizeText(value) {
+    var text = String(value == null ? "" : value)
+    text = text.replace(/<[^>]*>/g, "").replace(/[<>]/g, "")
+    text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    text = text.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+    if (text.length > 200)
+      text = text.substring(0, 200)
+    return text
+  }
+
+  function sanitizeField(obj, key) {
+    if (!obj || obj[key] === undefined || obj[key] === null)
+      return
+    obj[key] = sanitizeText(obj[key])
+  }
+
+  function sanitizeSnapshot(data) {
+    if (!data || typeof data !== "object")
+      return data
+    if (data.profile && typeof data.profile === "object") {
+      sanitizeField(data.profile, "name")
+      sanitizeField(data.profile, "username")
+    }
+    if (data.course && typeof data.course === "object") {
+      sanitizeField(data.course, "id")
+      sanitizeField(data.course, "language")
+      sanitizeField(data.course, "title")
+    }
+    if (data.leaderboard && typeof data.leaderboard === "object")
+      sanitizeField(data.leaderboard, "league")
+    sanitizeField(data, "error")
+    return data
+  }
+
   function consume(raw) {
     receivedOutput = true
     loading = false
@@ -106,7 +140,11 @@ Item {
     }
 
     try {
-      snapshot = JSON.parse(text)
+      var parsed = JSON.parse(text)
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("invalid snapshot")
+      }
+      snapshot = sanitizeSnapshot(parsed)
     } catch (error) {
       snapshot = {
         ok: false,

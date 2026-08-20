@@ -11,6 +11,10 @@ const { parseArgs } = require('node:util');
 
 const PUBLIC_USER_URL = "https://www.duolingo.com/2017-06-30/users";
 const LEADERBOARD_URL = "https://duolingo-leaderboards-prod.duolingo.com/leaderboards/7d9f5dd1-8423-491a-91f2-2532052038ce/users/";
+const ALLOWED_HOSTS = new Set([
+  "www.duolingo.com",
+  "duolingo-leaderboards-prod.duolingo.com",
+]);
 const LEAGUES = [
   "Bronze",
   "Silver",
@@ -24,6 +28,11 @@ const LEAGUES = [
   "Diamond"
 ];
 const USER_AGENT = "Omarchy-Duolingo/1.0";
+const MAX_DISPLAY_LENGTH = 200;
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+const MAX_COURSES = 256;
+const MAX_RANKINGS = 512;
+const MAX_USERNAME_LENGTH = 64;
 
 class WidgetError extends Error {
   constructor(code, message) {
@@ -33,8 +42,22 @@ class WidgetError extends Error {
   }
 }
 
+function isAllowedUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && ALLOWED_HOSTS.has(parsed.hostname);
+  } catch (err) {
+    return false;
+  }
+}
+
 function getJson(url, timeoutMs = 12000) {
   return new Promise((resolve, reject) => {
+    if (!isAllowedUrl(url)) {
+      reject(new WidgetError("invalid_response", "Duolingo returned an unexpected response."));
+      return;
+    }
+
     const req = https.get(url, {
       headers: {
         "Accept": "application/json",
@@ -63,13 +86,30 @@ function getJson(url, timeoutMs = 12000) {
         return;
       }
 
+      const contentLength = parseInt(res.headers["content-length"], 10);
+      if (Number.isFinite(contentLength) && contentLength > MAX_RESPONSE_BYTES) {
+        res.resume();
+        reject(new WidgetError("invalid_response", "Duolingo returned an unexpected response."));
+        return;
+      }
+
       let payload = "";
+      let rejected = false;
       res.setEncoding("utf8");
-      res.on("data", (chunk) => { payload += chunk; });
+      res.on("data", (chunk) => {
+        if (rejected) return;
+        payload += chunk;
+        if (payload.length > MAX_RESPONSE_BYTES) {
+          rejected = true;
+          res.destroy();
+          reject(new WidgetError("invalid_response", "Duolingo returned an unexpected response."));
+        }
+      });
       res.on("end", () => {
+        if (rejected) return;
         try {
           const data = JSON.parse(payload);
-          if (typeof data !== "object" || data === null) {
+          if (typeof data !== "object" || data === null || Array.isArray(data)) {
             reject(new WidgetError("invalid_response", "Duolingo returned an unexpected response."));
             return;
           }
@@ -130,6 +170,55 @@ function firstText(...values) {
   return "";
 }
 
+function displayText(...values) {
+  const text = firstText(...values)
+    .replace(/<[^>]*>/g, "")
+    .replace(/[<>]/g, "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[\u202A-\u202E\u2066-\u2069]/g, "");
+  return text.length > MAX_DISPLAY_LENGTH ? text.substring(0, MAX_DISPLAY_LENGTH) : text;
+}
+
+function sanitizeField(obj, key) {
+  if (!obj || !Object.prototype.hasOwnProperty.call(obj, key) || obj[key] == null) {
+    return;
+  }
+  obj[key] = displayText(obj[key]);
+}
+
+function sanitizeSnapshot(data) {
+  if (typeof data !== "object" || data === null) {
+    return data;
+  }
+
+  if (data.profile && typeof data.profile === "object") {
+    sanitizeField(data.profile, "name");
+    sanitizeField(data.profile, "username");
+  }
+
+  if (data.course && typeof data.course === "object") {
+    sanitizeField(data.course, "id");
+    sanitizeField(data.course, "language");
+    sanitizeField(data.course, "title");
+  }
+
+  if (data.leaderboard && typeof data.leaderboard === "object") {
+    sanitizeField(data.leaderboard, "league");
+  }
+
+  sanitizeField(data, "error");
+
+  if (Array.isArray(data.warnings)) {
+    for (const warning of data.warnings) {
+      if (typeof warning !== "object" || warning === null) continue;
+      sanitizeField(warning, "code");
+      sanitizeField(warning, "message");
+    }
+  }
+
+  return data;
+}
+
 function parseIsoDate(value) {
   const text = String(value || "").trim().substring(0, 10);
   if (!text) {
@@ -147,7 +236,7 @@ function parseIsoDate(value) {
 
 function chooseCourse(profile, config) {
   const courses = Array.isArray(profile.courses)
-    ? profile.courses.filter(c => typeof c === "object" && c !== null)
+    ? profile.courses.filter(c => typeof c === "object" && c !== null).slice(0, MAX_COURSES)
     : [];
   const current = profile.currentCourse;
   if (typeof current === "object" && current !== null) {
@@ -184,7 +273,7 @@ function chooseCourse(profile, config) {
 
   selected = selected || {};
   const code = firstText(selected.learningLanguage, language, learningLanguage);
-  const title = firstText(selected.title, code ? code.toUpperCase() : "Current course");
+  const title = displayText(selected.title, code ? code.toUpperCase() : "Current course");
   return {
     id: firstText(selected.id, courseId),
     language: code,
@@ -222,7 +311,7 @@ function normalizeLeaderboard(raw, userId) {
   const tier = firstInt(cohort.tier, active ? active.tier : null, board.tier, data.tier);
   const league = tier !== null && tier >= 0 && tier < LEAGUES.length ? LEAGUES[tier] : "Unranked";
 
-  const rankings = Array.isArray(cohort.rankings) ? cohort.rankings : [];
+  const rankings = Array.isArray(cohort.rankings) ? cohort.rankings.slice(0, MAX_RANKINGS) : [];
   let standing = null;
   let position = null;
   for (let i = 0; i < rankings.length; i++) {
@@ -267,7 +356,7 @@ function normalizeStats(profile, leaderboard, config, today = null, warnings = n
   const todayZero = new Date(todayDate.getFullYear(), todayDate.getMonth(), todayDate.getDate());
   const course = chooseCourse(profile, config);
 
-  return {
+  return sanitizeSnapshot({
     ok: true,
     configured: true,
     stale: false,
@@ -276,8 +365,8 @@ function normalizeStats(profile, leaderboard, config, today = null, warnings = n
     fetchedAt: new Date().toISOString(),
     profile: {
       id: userId,
-      name: firstText(profile.name, profile.username, config.username),
-      username: firstText(profile.username, config.username),
+      name: displayText(profile.name, profile.username, config.username),
+      username: displayText(profile.username, config.username),
     },
     course: course,
     streak: normalizeStreak(profile, todayZero),
@@ -285,7 +374,7 @@ function normalizeStats(profile, leaderboard, config, today = null, warnings = n
     totalXp: asInt(profile.totalXp),
     leaderboard: normalizeLeaderboard(leaderboard, userId),
     warnings: Array.isArray(warnings) ? warnings : [],
-  };
+  });
 }
 
 function defaultCachePath() {
@@ -314,7 +403,9 @@ function loadCache(cachePath, identity, maxAge = null) {
       return null;
     }
     const data = wrapper.data;
-    return typeof data === "object" && data !== null && data.ok === true ? data : null;
+    return typeof data === "object" && data !== null && data.ok === true
+      ? sanitizeSnapshot(data)
+      : null;
   } catch (err) {
     return null;
   }
@@ -326,7 +417,7 @@ function saveCache(cachePath, identity, data) {
   const wrapper = {
     identity: identity,
     savedAt: Date.now() / 1000,
-    data: data,
+    data: sanitizeSnapshot(data),
   };
 
   const tempPath = path.join(dir, `.stats-${Math.random().toString(36).substring(2)}.json`);
@@ -347,12 +438,18 @@ function saveCache(cachePath, identity, data) {
 async function fetchStats(config, getJsonFn = getJson, timeoutMs = 12000) {
   const username = firstText(config.username);
   const warnings = [];
+  if (!username || username.length > MAX_USERNAME_LENGTH) {
+    throw new WidgetError("invalid_config", "That Duolingo username is invalid.");
+  }
 
   const publicUrl = PUBLIC_USER_URL + "?" + new URLSearchParams({ username: username }).toString();
   const publicResponse = await getJsonFn(publicUrl, timeoutMs);
   const users = publicResponse.users;
-  if (!Array.isArray(users) || users.length === 0 || typeof users[0] !== "object" || users[0] === null) {
-    throw new WidgetError("profile_not_found", `Duolingo profile "${username}" was not found or is private.`);
+  if (!Array.isArray(users) || users.length === 0 || typeof users[0] !== "object" || users[0] === null || Array.isArray(users[0])) {
+    throw new WidgetError(
+      "profile_not_found",
+      `Duolingo profile "${displayText(username)}" was not found or is private.`
+    );
   }
   const publicProfile = users[0];
   const userId = asInt(publicProfile.id);
@@ -369,7 +466,10 @@ async function fetchStats(config, getJsonFn = getJson, timeoutMs = 12000) {
   try {
     leaderboard = await getJsonFn(leaderboardUrl, timeoutMs);
   } catch (exc) {
-    warnings.push({ code: "leaderboard_unavailable", message: exc.message });
+    warnings.push({
+      code: "leaderboard_unavailable",
+      message: displayText(exc.message) || "Leaderboard request failed",
+    });
   }
 
   return normalizeStats(publicProfile, leaderboard, config, null, warnings);
@@ -380,8 +480,8 @@ function errorPayload(exc, configured = false) {
     ok: false,
     configured: configured,
     stale: false,
-    error: exc.message,
-    errorCode: exc.code,
+    error: displayText(exc && exc.message) || "Duolingo request failed.",
+    errorCode: firstText(exc && exc.code),
     fetchedAt: "",
   };
 }
@@ -479,9 +579,9 @@ async function run(args) {
       const stale = loadCache(cachePath, identity);
       if (stale !== null) {
         stale.stale = true;
-        stale.error = exc.message;
-        stale.errorCode = exc.code;
-        return stale;
+        stale.error = displayText(exc.message) || "Duolingo request failed.";
+        stale.errorCode = firstText(exc.code);
+        return sanitizeSnapshot(stale);
       }
       return errorPayload(exc, true);
     }
@@ -531,6 +631,9 @@ module.exports = {
   nested,
   firstInt,
   firstText,
+  displayText,
+  sanitizeSnapshot,
+  isAllowedUrl,
   parseIsoDate,
   chooseCourse,
   normalizeStreak,
