@@ -18,6 +18,10 @@ Item {
     errorCode: "loading"
   })
 
+  property string username: ""
+  property string language: ""
+  property string courseId: ""
+
   readonly property string home: Quickshell.env("HOME") || ""
   readonly property string configHome: Quickshell.env("XDG_CONFIG_HOME") || (home + "/.config")
   readonly property string cacheHome: Quickshell.env("XDG_CACHE_HOME") || (home + "/.cache")
@@ -25,10 +29,30 @@ Item {
   readonly property string cachePath: cacheHome + "/omarchy-duolingo/stats.json"
   readonly property string pluginDir: decodeURIComponent(
     Qt.resolvedUrl(".").toString().replace(/^file:\/\//, "").replace(/\/$/, ""))
-  readonly property string scriptPath: pluginDir + "/scripts/duolingo_api.py"
+  readonly property string scriptPath: pluginDir + "/Duolingo.js"
   readonly property bool available: snapshot && snapshot.ok === true
 
   signal updated()
+
+  property bool _refreshPending: false
+  property bool _pendingForce: false
+
+  function queueRefresh(force) {
+    _pendingForce = _pendingForce || force === true
+    if (!_refreshPending) {
+      _refreshPending = true
+      Qt.callLater(function() {
+        _refreshPending = false
+        var doForce = _pendingForce
+        _pendingForce = false
+        service.refresh(doForce)
+      })
+    }
+  }
+
+  onUsernameChanged: service.queueRefresh(true)
+  onLanguageChanged: service.queueRefresh(true)
+  onCourseIdChanged: service.queueRefresh(true)
 
   function refresh(force) {
     if (poll.running) {
@@ -38,15 +62,27 @@ Item {
     }
 
     var command = [
-      "python3",
+      "node",
       service.scriptPath,
-      "--config",
-      service.configPath,
-      "--cache",
-      service.cachePath,
-      "--max-age",
-      "60"
     ]
+
+    if (service.username) {
+      command.push(
+        "--username", service.username,
+        "--language", service.language,
+        "--course-id", service.courseId
+      )
+    } else {
+      command.push(
+        "--config", service.configPath
+      )
+    }
+
+    command.push(
+      "--cache", service.cachePath,
+      "--max-age", "60"
+    )
+
     if (force === true) command.push("--force")
     receivedOutput = false
     loading = true
@@ -102,8 +138,8 @@ Item {
     printErrors: false
     preload: true
     onFileChanged: reload()
-    onLoaded: service.refresh(true)
-    onLoadFailed: service.refresh(true)
+    onLoaded: service.queueRefresh(true)
+    onLoadFailed: service.queueRefresh(true)
   }
 
   Process {
@@ -111,8 +147,9 @@ Item {
     running: false
 
     stdout: StdioCollector {
+      id: stdoutCollector
       waitForEnd: true
-      onStreamFinished: service.consume(this.text)
+      onStreamFinished: service.consume(stdoutCollector.text)
     }
 
     onExited: Qt.callLater(service.finishPoll)

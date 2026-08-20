@@ -2,6 +2,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Controls
 import qs.Commons
 import qs.Ui
 
@@ -26,6 +27,69 @@ Panel {
   readonly property string languageName: dataReady && snapshot.course && snapshot.course.title
     ? String(snapshot.course.title)
     : "your course"
+
+  property bool showingSettings: false
+  property bool settingsLoaded: false
+  property string username: ""
+  property string language: ""
+  property string courseId: ""
+
+  onSettingsChanged: syncSettings()
+
+  Component.onCompleted: syncSettings()
+
+  function syncSettings() {
+    root.username = String(root.setting("username", "") || "").trim()
+    root.language = String(root.setting("language", "") || "").trim()
+    root.courseId = String(root.setting("courseId", "") || "").trim()
+    root.settingsLoaded = true
+
+    if (root.showingSettings) root.populateSettingsForm()
+  }
+
+  function persistSettings(values) {
+    var entry = { id: root.moduleName }
+    for (var existing in root.settings) {
+      if (existing !== "id") entry[existing] = root.settings[existing]
+    }
+    for (var key in values) entry[key] = values[key]
+
+    root.settings = entry
+    if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function") {
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+    }
+  }
+
+  function openSettings() {
+    root.showingSettings = true
+    root.populateSettingsForm()
+    Qt.callLater(function() {
+      usernameField.forceActiveFocus()
+      usernameField.selectAll()
+    })
+  }
+
+  function closeSettings() {
+    root.showingSettings = false
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
+
+  function populateSettingsForm() {
+    usernameField.text = root.username
+    languageField.text = root.language
+    courseIdField.text = root.courseId
+  }
+
+  function saveSettings() {
+    root.persistSettings({
+      username: String(usernameField.text || "").trim(),
+      language: String(languageField.text || "").trim(),
+      courseId: String(courseIdField.text || "").trim()
+    })
+    root.showingSettings = false
+    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+  }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -81,6 +145,9 @@ Panel {
   DuolingoService {
     id: stats
     refreshIntervalMinutes: Math.max(1, parseInt(root.setting("refreshIntervalMinutes", 10), 10) || 10)
+    username: root.username
+    language: root.language
+    courseId: root.courseId
   }
 
   Component {
@@ -187,17 +254,20 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
-    focusTarget: keyCatcher
+    focusTarget: root.showingSettings ? usernameField : keyCatcher
     contentWidth: popup.fittedContentWidth(Style.space(400))
     contentHeight: popup.fittedContentHeight(contentColumn.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.showingSettings) root.closeSettings()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(text) {
-        if (text === "r" || text === "R") root.refresh(true)
+        if (!root.showingSettings && (text === "r" || text === "R")) root.refresh(true)
       }
 
       Flickable {
@@ -215,10 +285,10 @@ Panel {
 
           PanelHero {
             width: parent.width
-            title: "Duolingo"
-            meta: root.dataReady
-              ? root.languageName + " public profile"
-              : "Learning stats"
+            title: root.showingSettings ? "Duolingo settings" : "Duolingo"
+            meta: root.showingSettings
+              ? "User configuration"
+              : (root.dataReady ? root.languageName + " public profile" : "Learning stats")
             foreground: root.foreground
             fontFamily: root.fontFamily
 
@@ -233,14 +303,30 @@ Panel {
             }
 
             trailingControl: Component {
-              PanelActionButton {
-                iconText: "󰑐"
-                tooltipText: "Refresh Duolingo stats"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                enabled: !stats.loading
-                focusable: true
-                onClicked: root.refresh(true)
+              Row {
+                spacing: Style.space(6)
+
+                PanelActionButton {
+                  iconText: "󰑐"
+                  tooltipText: "Refresh Duolingo stats"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  enabled: !stats.loading && !root.showingSettings
+                  focusable: true
+                  onClicked: root.refresh(true)
+                }
+
+                PanelActionButton {
+                  iconText: root.showingSettings ? "󰁍" : "󰒓"
+                  tooltipText: root.showingSettings ? "Back to stats" : "Settings"
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                  focusable: true
+                  onClicked: {
+                    if (root.showingSettings) root.closeSettings()
+                    else root.openSettings()
+                  }
+                }
               }
             }
           }
@@ -252,7 +338,7 @@ Panel {
 
           Column {
             width: parent.width
-            visible: !root.dataReady
+            visible: !root.showingSettings && !root.dataReady
             spacing: Style.space(7)
 
             Text {
@@ -280,17 +366,17 @@ Panel {
             Text {
               width: parent.width
               visible: !stats.loading && root.snapshot.errorCode === "not_configured"
-              text: stats.configPath
+              text: "Click the gear icon (󰒓) in the top-right to configure."
               color: Qt.darker(root.foreground, 1.5)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
-              elide: Text.ElideMiddle
+              wrapMode: Text.WordWrap
             }
           }
 
           Column {
             width: parent.width
-            visible: root.dataReady
+            visible: !root.showingSettings && root.dataReady
             spacing: Style.space(12)
 
             Item {
@@ -457,6 +543,86 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
               horizontalAlignment: Text.AlignRight
+            }
+          }
+
+          Column {
+            width: parent.width
+            visible: root.showingSettings
+            spacing: Style.space(10)
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "Duolingo username"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            TextField {
+              id: usernameField
+              width: parent.width
+              placeholderText: "Duolingo username"
+              foreground: root.foreground
+              accent: root.accent
+            }
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "Language code"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            TextField {
+              id: languageField
+              width: parent.width
+              placeholderText: "e.g. es, de, ja (optional)"
+              foreground: root.foreground
+              accent: root.accent
+            }
+
+            PanelSectionHeader {
+              width: parent.width
+              text: "Course ID"
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+            }
+
+            TextField {
+              id: courseIdField
+              width: parent.width
+              placeholderText: "Exact course ID (optional)"
+              foreground: root.foreground
+              accent: root.accent
+            }
+
+            Item {
+              width: parent.width
+              height: Math.max(cancelButton.implicitHeight, saveButton.implicitHeight)
+
+              Button {
+                id: cancelButton
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Cancel"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                focusable: true
+                onClicked: root.closeSettings()
+              }
+
+              Button {
+                id: saveButton
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                bordered: true
+                iconText: "󰆓"
+                text: "Save"
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                focusable: true
+                onClicked: root.saveSettings()
+              }
             }
           }
         }

@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Duolingo",
-    "description": "Shows your streak, daily lesson status, course XP, currencies, energy, and league standing.",
+    "description": "Shows your streak, daily lesson status, course XP, total XP, and league standing.",
     "category": "Info",
     "allowMultiple": false,
     "defaultSection": "right",

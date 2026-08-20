@@ -7,7 +7,7 @@ The bar shows Duo's mark and your current streak. When today's lesson is still o
 ## Requirements
 
 - Omarchy 4.0 or newer with the Quickshell-based Omarchy Shell
-- Python 3
+- Node.js (v18 or newer)
 - A public Duolingo profile
 - Internet access to `duolingo.com` and `duolingo-leaderboards-prod.duolingo.com`
 
@@ -40,23 +40,12 @@ omarchy plugin enable danglenoir.duolingo
 
 ## Configure
 
-Create the private user configuration from the included example:
+The widget can be configured directly from the Omarchy Shell UI!
 
-```bash
-install -Dm600 \
-  ~/.config/omarchy/plugins/danglenoir.duolingo/config.example.json \
-  ~/.config/omarchy/duolingo.json
-```
-
-Edit `~/.config/omarchy/duolingo.json`:
-
-```json
-{
-  "username": "your-duolingo-username",
-  "language": "es",
-  "courseId": ""
-}
-```
+1. Click the Duolingo widget on your bar to open the popup panel.
+2. Click the gear icon (󰒓) in the top-right corner to open the Settings form.
+3. Enter your **Duolingo username**, and optionally a **Language code** (such as `es`, `de`, or `ja`) or exact **Course ID**.
+4. Click **Save** (󰆓). The settings are persisted directly within your Omarchy Shell configuration (`shell.json`).
 
 Configuration fields:
 
@@ -75,7 +64,7 @@ curl -fsSL "https://www.duolingo.com/2017-06-30/users?username=YOUR_USERNAME" \
   | jq '.users[0].courses[] | {id, title, learningLanguage}'
 ```
 
-The configuration file is watched and reloads automatically. To force a shell reload:
+To force a shell reload:
 
 ```bash
 omarchy restart shell
@@ -96,7 +85,7 @@ Middle-clicking the bar widget or pressing the refresh button in the panel reque
 Run the data adapter directly to inspect its normalized output:
 
 ```bash
-python3 ~/.config/omarchy/plugins/danglenoir.duolingo/scripts/duolingo_api.py \
+node ~/.config/omarchy/plugins/danglenoir.duolingo/Duolingo.js \
   --force --pretty
 ```
 
@@ -124,10 +113,9 @@ Remove the widget and plugin checkout:
 omarchy plugin remove danglenoir.duolingo
 ```
 
-Optionally remove the configuration and cached stats:
+Optionally remove the cached stats:
 
 ```bash
-rm -f ~/.config/omarchy/duolingo.json
 rm -rf ~/.cache/omarchy-duolingo
 ```
 
