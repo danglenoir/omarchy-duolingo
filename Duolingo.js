@@ -450,6 +450,9 @@ async function run(args) {
   const cachePath = expandUser(args.cache || defaultCachePath());
   const lockPath = cachePath + ".lock";
 
+  const cacheDir = path.dirname(cachePath);
+  fs.mkdirSync(cacheDir, { recursive: true });
+
   const lockAcquired = await acquireLock(lockPath);
   if (!lockAcquired) {
     return errorPayload(new WidgetError("lock_failed", "Could not acquire file lock."), true);

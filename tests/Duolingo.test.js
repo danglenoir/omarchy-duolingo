@@ -207,3 +207,25 @@ test('CacheTests - direct argument parameters bypass config files', async () => 
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('CacheTests - cache directory is created automatically if missing', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "duolingo-tests-"));
+  const missingCacheDir = path.join(tempDir, "deeply", "nested", "cache");
+  const cachePath = path.join(missingCacheDir, "stats.json");
+  
+  try {
+    const result = await api.run({
+      username: "ada",
+      cache: cachePath,
+      'max-age': 60,
+      timeout: 0.01,
+      force: true,
+    });
+    
+    assert.strictEqual(fs.existsSync(missingCacheDir), true);
+    assert.strictEqual(result.ok, false);
+    assert.notStrictEqual(result.errorCode, "ENOENT");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
