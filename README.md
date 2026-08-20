@@ -2,7 +2,7 @@
 
 An Omarchy Shell bar widget for your Duolingo streak and learning stats.
 
-The bar shows Duo's mark and your current streak. When today's lesson is still outstanding, both turn urgent red, the count becomes bold, and an exclamation mark is added. Click the widget for course XP, total XP, currencies, energy or hearts, and league standing.
+The bar shows Duo's mark and your current streak. When today's lesson is still outstanding, both turn urgent red, the count becomes bold, and an exclamation mark is added. Click the widget for course XP, total XP, and league standing.
 
 ## Requirements
 
@@ -54,8 +54,7 @@ Edit `~/.config/omarchy/duolingo.json`:
 {
   "username": "your-duolingo-username",
   "language": "es",
-  "courseId": "",
-  "jwt": ""
+  "courseId": ""
 }
 ```
 
@@ -66,7 +65,6 @@ Configuration fields:
 | `username` | Yes | Your exact Duolingo username. |
 | `language` | No | Learning-language code such as `es`, `de`, or `ja`. The matching course is shown. |
 | `courseId` | No | Exact Duolingo course ID. This takes priority over `language`. |
-| `jwt` | No | Your own `jwt_token`, required for private values such as gems and energy/hearts. |
 
 If both course selectors are blank, the active course is used when Duolingo returns it; otherwise the course with the most XP is shown. A Duolingo streak belongs to the whole account, not one language. The selected course supplies the language name and course XP shown next to that streak.
 
@@ -82,20 +80,6 @@ The configuration file is watched and reloads automatically. To force a shell re
 ```bash
 omarchy restart shell
 ```
-
-### Private account stats
-
-The username-only configuration provides the streak, daily completion state, course XP, total XP, and available league information. Gems and energy/hearts are private account fields and require a Duolingo session token.
-
-1. Sign in at `https://www.duolingo.com`.
-2. Open the browser developer tools.
-3. Under **Application** or **Storage**, open the cookies for `https://www.duolingo.com`.
-4. Copy the value of the `jwt_token` cookie into the `jwt` field.
-5. Protect the file with `chmod 600 ~/.config/omarchy/duolingo.json`.
-
-The token is sent only to account endpoints on `www.duolingo.com`; the public league request does not receive it. It is not written to the widget cache or to `shell.json`. Treat it like a password and replace it when the panel reports that Duolingo rejected it.
-
-Duolingo no longer returns Lingots for many accounts, and weekly position or XP appears only while the account belongs to an active league cohort. The panel displays `-` when Duolingo does not provide a value; it does not convert missing data to zero.
 
 ### Refresh interval
 
@@ -140,7 +124,7 @@ Remove the widget and plugin checkout:
 omarchy plugin remove danglenoir.duolingo
 ```
 
-Optionally remove the private configuration, session token, and cached stats:
+Optionally remove the configuration and cached stats:
 
 ```bash
 rm -f ~/.config/omarchy/duolingo.json

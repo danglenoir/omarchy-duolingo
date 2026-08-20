@@ -1,6 +1,5 @@
 {
   "username": "your-duolingo-username",
   "language": "es",
-  "courseId": "",
-  "jwt": ""
+  "courseId": ""
 }

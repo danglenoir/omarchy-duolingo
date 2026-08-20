@@ -18,26 +18,10 @@ from urllib import error, parse, request
 
 
 PUBLIC_USER_URL = "https://www.duolingo.com/2017-06-30/users"
-PRIVATE_USER_URL = "https://www.duolingo.com/2017-06-30/users/{user_id}"
-LEGACY_USER_URL = "https://www.duolingo.com/users/{username}"
 LEADERBOARD_URL = (
     "https://duolingo-leaderboards-prod.duolingo.com/leaderboards/"
     "7d9f5dd1-8423-491a-91f2-2532052038ce/users/{user_id}"
 )
-PRIVATE_FIELDS = [
-    "courses",
-    "currentCourse",
-    "fromLanguage",
-    "gemsConfig",
-    "health",
-    "id",
-    "learningLanguage",
-    "name",
-    "streak",
-    "streakData{currentStreak}",
-    "totalXp",
-    "username",
-]
 LEAGUES = [
     "Bronze",
     "Silver",
@@ -66,15 +50,11 @@ class ApiClient:
     def __init__(self, timeout: float = 12.0):
         self.timeout = timeout
 
-    def get_json(self, url: str, jwt: str = "") -> dict[str, Any]:
+    def get_json(self, url: str) -> dict[str, Any]:
         headers = {
             "Accept": "application/json",
             "User-Agent": USER_AGENT,
         }
-        token = normalize_token(jwt)
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-            headers["Cookie"] = f"jwt_token={token}"
 
         req = request.Request(url, headers=headers)
         try:
@@ -98,13 +78,6 @@ class ApiClient:
         if not isinstance(data, dict):
             raise WidgetError("invalid_response", "Duolingo returned an unexpected response.")
         return data
-
-
-def normalize_token(value: Any) -> str:
-    token = str(value or "").strip()
-    if token.lower().startswith("bearer "):
-        token = token[7:].strip()
-    return token
 
 
 def as_int(value: Any) -> int | None:
@@ -149,15 +122,6 @@ def parse_iso_date(value: Any) -> dt.date | None:
         return dt.date.fromisoformat(text)
     except ValueError:
         return None
-
-
-def merge_profiles(public: dict[str, Any], private: dict[str, Any] | None) -> dict[str, Any]:
-    merged = dict(public)
-    if private:
-        for key, value in private.items():
-            if value is not None:
-                merged[key] = value
-    return merged
 
 
 def choose_course(profile: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
@@ -214,38 +178,6 @@ def normalize_streak(profile: dict[str, Any], today: dt.date) -> dict[str, Any]:
     }
 
 
-def normalize_energy(profile: dict[str, Any]) -> dict[str, Any]:
-    energy = profile.get("energyConfig")
-    if not isinstance(energy, dict):
-        energy = profile.get("energy")
-    if isinstance(energy, dict):
-        current = first_int(
-            energy.get("currentEnergy"), energy.get("energy"), energy.get("current"), energy.get("value")
-        )
-        maximum = first_int(
-            energy.get("maxEnergy"), energy.get("maximum"), energy.get("max"), energy.get("capacity")
-        )
-        if current is not None or maximum is not None:
-            return {"label": "Energy", "current": current, "max": maximum, "unlimited": False}
-    elif energy is not None:
-        current = as_int(energy)
-        if current is not None:
-            return {"label": "Energy", "current": current, "max": None, "unlimited": False}
-
-    health = profile.get("health")
-    if isinstance(health, dict):
-        unlimited = bool(
-            health.get("unlimitedHeartsAvailable")
-            or health.get("unlimitedHearts")
-            or health.get("unlimited")
-        )
-        current = first_int(health.get("hearts"), health.get("health"), health.get("current"))
-        maximum = first_int(health.get("maxHearts"), health.get("maxHealth"), health.get("max"))
-        return {"label": "Hearts", "current": current, "max": maximum, "unlimited": unlimited}
-    current = as_int(health)
-    return {"label": "Energy", "current": current, "max": None, "unlimited": False}
-
-
 def normalize_leaderboard(raw: dict[str, Any] | None, user_id: int | None) -> dict[str, Any]:
     raw = raw if isinstance(raw, dict) else {}
     board = raw.get("leaderboard") if isinstance(raw.get("leaderboard"), dict) else raw
@@ -288,24 +220,15 @@ def normalize_leaderboard(raw: dict[str, Any] | None, user_id: int | None) -> di
 
 
 def normalize_stats(
-    public_profile: dict[str, Any],
-    private_profile: dict[str, Any] | None,
+    profile: dict[str, Any],
     leaderboard: dict[str, Any] | None,
     config: dict[str, Any],
     today: dt.date | None = None,
     warnings: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
-    profile = merge_profiles(public_profile, private_profile)
     user_id = as_int(profile.get("id"))
     today = today or dt.date.today()
     course = choose_course(profile, config)
-    gems = first_int(
-        nested(profile, "gemsConfig", "gems"),
-        profile.get("gems"),
-        nested(profile, "currency", "gems"),
-        profile.get("rupees"),
-    )
-    lingots = first_int(profile.get("lingots"), nested(profile, "currency", "lingots"))
 
     return {
         "ok": True,
@@ -323,13 +246,7 @@ def normalize_stats(
         "streak": normalize_streak(profile, today),
         "courseXp": course.get("xp"),
         "totalXp": as_int(profile.get("totalXp")),
-        "currencies": {
-            "gems": gems,
-            "lingots": lingots,
-        },
-        "energy": normalize_energy(profile),
         "leaderboard": normalize_leaderboard(leaderboard, user_id),
-        "privateStatsAvailable": private_profile is not None,
         "warnings": list(warnings or []),
     }
 
@@ -407,7 +324,6 @@ def save_cache(path: Path, identity: str, data: dict[str, Any]) -> None:
 def fetch_stats(config: dict[str, Any], client: ApiClient | None = None) -> dict[str, Any]:
     client = client or ApiClient()
     username = first_text(config.get("username"))
-    jwt = normalize_token(config.get("jwt") or config.get("jwtToken") or config.get("token"))
     warnings: list[dict[str, str]] = []
 
     public_url = PUBLIC_USER_URL + "?" + parse.urlencode({"username": username})
@@ -420,40 +336,6 @@ def fetch_stats(config: dict[str, Any], client: ApiClient | None = None) -> dict
     if user_id is None:
         raise WidgetError("invalid_response", "Duolingo did not return a user ID.")
 
-    private_profile: dict[str, Any] | None = None
-    if jwt:
-        private_parts: list[dict[str, Any]] = []
-        private_errors: list[WidgetError] = []
-        fields = ",".join(PRIVATE_FIELDS)
-        private_url = PRIVATE_USER_URL.format(user_id=user_id) + "?" + parse.urlencode({"fields": fields})
-        try:
-            private_parts.append(client.get_json(private_url, jwt=jwt))
-        except WidgetError as exc:
-            private_errors.append(exc)
-
-        # Older accounts can still expose Lingots and legacy health values only
-        # through the authenticated username endpoint. It is optional and the
-        # modern response always wins when both contain the same field.
-        legacy_url = LEGACY_USER_URL.format(username=parse.quote(username, safe=""))
-        try:
-            private_parts.insert(0, client.get_json(legacy_url, jwt=jwt))
-        except WidgetError as exc:
-            private_errors.append(exc)
-
-        if private_parts:
-            private_profile = {}
-            for part in private_parts:
-                private_profile = merge_profiles(private_profile, part)
-        elif private_errors:
-            warnings.append({"code": private_errors[0].code, "message": private_errors[0].message})
-    else:
-        warnings.append(
-            {
-                "code": "public_profile_only",
-                "message": "Add your session token to show gems and energy.",
-            }
-        )
-
     leaderboard: dict[str, Any] | None = None
     leaderboard_url = LEADERBOARD_URL.format(user_id=user_id) + "?" + parse.urlencode(
         {"client_unlocked": "true", "get_reactions": "true"}
@@ -463,7 +345,7 @@ def fetch_stats(config: dict[str, Any], client: ApiClient | None = None) -> dict
     except WidgetError as exc:
         warnings.append({"code": "leaderboard_unavailable", "message": exc.message})
 
-    return normalize_stats(public_profile, private_profile, leaderboard, config, warnings=warnings)
+    return normalize_stats(public_profile, leaderboard, config, warnings=warnings)
 
 
 def error_payload(exc: WidgetError, configured: bool = False) -> dict[str, Any]:
@@ -499,18 +381,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
         try:
             data = fetch_stats(config, ApiClient(timeout=args.timeout))
-            jwt = normalize_token(config.get("jwt") or config.get("jwtToken") or config.get("token"))
-            try:
-                mode = stat.S_IMODE(config_path.stat().st_mode)
-            except OSError:
-                mode = 0
-            if jwt and mode & 0o077:
-                data["warnings"].append(
-                    {
-                        "code": "insecure_config_permissions",
-                        "message": f"Protect {config_path} with chmod 600.",
-                    }
-                )
             save_cache(cache_path, identity, data)
             return data
         except WidgetError as exc:

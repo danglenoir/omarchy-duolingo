@@ -26,10 +26,6 @@ Panel {
   readonly property string languageName: dataReady && snapshot.course && snapshot.course.title
     ? String(snapshot.course.title)
     : "your course"
-  readonly property string importantWarning: warningFor([
-    "authentication_failed",
-    "insecure_config_permissions"
-  ])
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -43,27 +39,6 @@ Panel {
 
   function dayWord(days) {
     return Number(days) === 1 ? "day" : "days"
-  }
-
-  function energyValue() {
-    if (!dataReady || !snapshot.energy) return "-"
-    if (snapshot.energy.unlimited === true) return "Unlimited"
-    var current = snapshot.energy.current
-    var maximum = snapshot.energy.max
-    if (current === undefined || current === null) return "-"
-    return maximum === undefined || maximum === null
-      ? formatNumber(current)
-      : formatNumber(current) + "/" + formatNumber(maximum)
-  }
-
-  function warningFor(codes) {
-    if (!snapshot || !snapshot.warnings || !snapshot.warnings.length) return ""
-    for (var i = 0; i < snapshot.warnings.length; i++) {
-      var warning = snapshot.warnings[i]
-      if (warning && codes.indexOf(String(warning.code || "")) >= 0)
-        return String(warning.message || "")
-    }
-    return ""
   }
 
   function updatedLabel() {
@@ -242,7 +217,7 @@ Panel {
             width: parent.width
             title: "Duolingo"
             meta: root.dataReady
-              ? root.languageName + (root.snapshot.privateStatsAvailable ? " account stats" : " public profile")
+              ? root.languageName + " public profile"
               : "Learning stats"
             foreground: root.foreground
             fontFamily: root.fontFamily
@@ -454,113 +429,13 @@ Panel {
 
               Metric {
                 width: metrics.cellWidth
-                label: "Weekly XP"
+                label: "League"
                 value: root.snapshot.leaderboard
-                  ? root.formatNumber(root.snapshot.leaderboard.score)
-                  : "-"
+                  ? root.snapshot.leaderboard.league
+                  : "Unranked"
                 foreground: root.foreground
                 fontFamily: root.fontFamily
               }
-
-              Metric {
-                width: metrics.cellWidth
-                label: "Gems"
-                value: root.snapshot.currencies
-                  ? root.formatNumber(root.snapshot.currencies.gems)
-                  : "-"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Metric {
-                width: metrics.cellWidth
-                label: "Lingots"
-                value: root.snapshot.currencies
-                  ? root.formatNumber(root.snapshot.currencies.lingots)
-                  : "-"
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-
-              Metric {
-                width: metrics.cellWidth
-                label: root.snapshot.energy && root.snapshot.energy.label
-                  ? root.snapshot.energy.label
-                  : "Energy"
-                value: root.energyValue()
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-              }
-            }
-
-            PanelSeparator {
-              width: parent.width
-              foreground: root.foreground
-            }
-
-            Item {
-              width: parent.width
-              height: Style.space(48)
-
-              Column {
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(2)
-
-                Text {
-                  text: root.snapshot.leaderboard
-                    ? root.snapshot.leaderboard.league + " League"
-                    : "Unranked"
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.title
-                  font.bold: true
-                }
-
-                Text {
-                  text: "Current league"
-                  color: Qt.darker(root.foreground, 1.45)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-              }
-
-              Column {
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(2)
-
-                Text {
-                  width: Style.space(96)
-                  text: root.snapshot.leaderboard && root.snapshot.leaderboard.position
-                    ? "#" + root.formatNumber(root.snapshot.leaderboard.position)
-                    : "-"
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.title
-                  font.bold: true
-                  horizontalAlignment: Text.AlignRight
-                }
-
-                Text {
-                  width: Style.space(96)
-                  text: "Position"
-                  color: Qt.darker(root.foreground, 1.45)
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  horizontalAlignment: Text.AlignRight
-                }
-              }
-            }
-
-            Text {
-              width: parent.width
-              visible: root.importantWarning !== ""
-              text: root.importantWarning
-              color: root.urgent
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
             }
 
             Text {
