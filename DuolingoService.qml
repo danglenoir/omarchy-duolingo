@@ -92,8 +92,15 @@ Item {
   function sanitizeText(value) {
     var text = String(value == null ? "" : value)
     text = text.replace(/<[^>]*>/g, "").replace(/[<>]/g, "")
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    text = text.replace(/!\[[^\]]*\]\[[^\]]*\]/g, "")
+    text = text.replace(/\[[^\]]+\]:\s*\S+/g, "")
+    text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    text = text.replace(/\b(?:https?|file|data|qrc):\/\/[^\s)]+/gi, "")
+    text = text.replace(/(^|[\s(])\/\/[^\s)]+/g, "$1")
     text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     text = text.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+    text = text.replace(/\s+/g, " ").trim()
     if (text.length > 200)
       text = text.substring(0, 200)
     return text

@@ -48,11 +48,8 @@ Panel {
   }
 
   function persistSettings(values) {
-    var entry = { id: root.moduleName }
-    for (var existing in root.settings) {
-      if (existing !== "id") entry[existing] = root.settings[existing]
-    }
-    for (var key in values) entry[key] = values[key]
+    var entry = Object.assign({ id: root.moduleName }, root.settings, values)
+    entry.id = root.moduleName
 
     root.settings = entry
     if (root.hostWidget && "settings" in root.hostWidget) root.hostWidget.settings = entry
@@ -97,8 +94,15 @@ Panel {
   function remoteText(value) {
     var text = String(value == null ? "" : value)
     text = text.replace(/<[^>]*>/g, "").replace(/[<>]/g, "")
+    text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    text = text.replace(/!\[[^\]]*\]\[[^\]]*\]/g, "")
+    text = text.replace(/\[[^\]]+\]:\s*\S+/g, "")
+    text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    text = text.replace(/\b(?:https?|file|data|qrc):\/\/[^\s)]+/gi, "")
+    text = text.replace(/(^|[\s(])\/\/[^\s)]+/g, "$1")
     text = text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     text = text.replace(/[\u202A-\u202E\u2066-\u2069]/g, "")
+    text = text.replace(/\s+/g, " ").trim()
     if (text.length > 200)
       text = text.substring(0, 200)
     return text
@@ -108,7 +112,7 @@ Panel {
     if (value === undefined || value === null || value === "") return "-"
     var number = Number(value)
     if (!isFinite(number)) return "-"
-    return String(Math.round(number)).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    return Math.round(number).toLocaleString(Qt.locale("en_US"), "f", 0)
   }
 
   function dayWord(days) {
@@ -125,18 +129,18 @@ Panel {
   function barTooltip() {
     if (!dataReady) {
       if (stats.loading) return "Loading your Duolingo streak..."
-      return snapshot.error
-        ? remoteText(snapshot.error)
-        : "Configure your Duolingo profile to show your streak."
+      if (snapshot.errorCode === "not_configured")
+        return "Configure your Duolingo profile to show your streak."
+      return "Duolingo stats are unavailable."
     }
     if (atRisk) {
-      return "Complete a " + languageName + " lesson today to protect your "
+      return "Complete a lesson today to protect your "
         + formatNumber(streakDays) + "-" + dayWord(streakDays) + " streak!"
     }
     if (streakDays === 0) {
-      return "Complete a " + languageName + " lesson today to begin a Duolingo streak."
+      return "Complete a lesson today to begin a Duolingo streak."
     }
-    return "Your current Duolingo streak while learning " + languageName + " is "
+    return "Your current Duolingo streak is "
       + formatNumber(streakDays) + " " + dayWord(streakDays) + "."
   }
 
@@ -154,7 +158,9 @@ Panel {
 
   DuolingoService {
     id: stats
-    refreshIntervalMinutes: Math.max(1, parseInt(root.setting("refreshIntervalMinutes", 10), 10) || 10)
+    refreshIntervalMinutes: Math.min(
+      60,
+      Math.max(1, parseInt(root.setting("refreshIntervalMinutes", 10), 10) || 10))
     username: root.username
     language: root.language
     courseId: root.courseId
@@ -300,7 +306,7 @@ Panel {
             title: root.showingSettings ? "Duolingo settings" : "Duolingo"
             meta: root.showingSettings
               ? "User configuration"
-              : (root.dataReady ? root.languageName + " public profile" : "Learning stats")
+              : (root.dataReady ? "Public profile" : "Learning stats")
             foreground: root.foreground
             fontFamily: root.fontFamily
 
@@ -594,6 +600,7 @@ Panel {
             TextField {
               id: usernameField
               width: parent.width
+              maximumLength: 64
               placeholderText: "Duolingo username"
               foreground: root.foreground
               accent: root.accent
@@ -609,6 +616,7 @@ Panel {
             TextField {
               id: languageField
               width: parent.width
+              maximumLength: 32
               placeholderText: "e.g. es, de, ja (optional)"
               foreground: root.foreground
               accent: root.accent
@@ -624,6 +632,7 @@ Panel {
             TextField {
               id: courseIdField
               width: parent.width
+              maximumLength: 128
               placeholderText: "Exact course ID (optional)"
               foreground: root.foreground
               accent: root.accent
